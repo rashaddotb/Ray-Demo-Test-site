@@ -1,0 +1,1022 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Mini WMS — Inventory, Bins, Branches, POs, Vendors, Orders & Reports</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0f1724; --card:#071427; --muted:#9aa6b2; --accent:#60a5fa; --accent-2:#34d399;
+    --glass: rgba(255,255,255,0.03);
+    --surface:#071827; --success:#10b981; --danger:#ef4444;
+    font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; min-height:100vh; background:linear-gradient(180deg,#06121a,#071827 60%); color:#e6eef6;
+    padding:20px;
+  }
+  .app{
+    max-width:1200px; margin:0 auto; display:grid; grid-template-columns:260px 1fr; gap:18px;
+  }
+  header{grid-column:1/-1; display:flex; align-items:center; gap:12px; margin-bottom:6px}
+  .logo{width:46px;height:46px;border-radius:8px;background:linear-gradient(135deg,#0ea5a3,#60a5fa);display:flex;align-items:center;justify-content:center;font-weight:800;color:#06202a}
+  h1{font-size:18px;margin:0}
+  .subtitle{color:var(--muted); font-size:13px;}
+  .sidebar{background:var(--card); border-radius:10px;padding:12px; height:calc(100vh - 130px); overflow:auto; border:1px solid rgba(255,255,255,0.03)}
+  .main{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); padding:14px; border-radius:10px; min-height:70vh; border:1px solid rgba(255,255,255,0.03); overflow:auto;}
+  .nav-btn{display:block;padding:10px;border-radius:8px;margin-bottom:8px;color:var(--muted);text-decoration:none;background:transparent;border:0;text-align:left;cursor:pointer}
+  .nav-btn.active{background:rgba(255,255,255,0.02);color:var(--accent); font-weight:600}
+  .panel-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .controls{display:flex;gap:8px;align-items:center}
+  .btn{background:var(--accent);color:#052023;border:0;padding:8px 10px;border-radius:8px;cursor:pointer;font-weight:600}
+  .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted);font-weight:600}
+  .btn.danger{background:var(--danger);color:white}
+  .table{width:100%;border-collapse:collapse;font-size:13px}
+  .table th{background:rgba(255,255,255,0.02);padding:8px;text-align:left;color:var(--muted);font-weight:600;border-bottom:1px solid rgba(255,255,255,0.03)}
+  .table td{padding:8px;border-bottom:1px dashed rgba(255,255,255,0.02)}
+  input, select, textarea{background:transparent;border:1px solid rgba(255,255,255,0.04);padding:8px;border-radius:6px;color:#e6eef6;width:100%}
+  .form-row{display:flex;gap:8px}
+  .form-row > *{flex:1}
+  .small{font-size:13px;color:var(--muted)}
+  .muted{color:var(--muted)}
+  .flex{display:flex;gap:8px;align-items:center}
+  .pill{background:rgba(255,255,255,0.02);padding:6px 8px;border-radius:999px;border:1px solid rgba(255,255,255,0.03);font-size:12px;color:var(--muted)}
+  .code{font-family:monospace;background:#021124;padding:8px;border-radius:8px;color:#cfeef0}
+  .search{display:flex;gap:8px;align-items:center}
+  .right{margin-left:auto}
+  .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999}
+  .modal{background:var(--surface);padding:16px;border-radius:10px;min-width:360px;max-width:960px;border:1px solid rgba(255,255,255,0.03)}
+  footer{grid-column:1/-1;color:var(--muted);margin-top:12px;font-size:13px}
+  .tag{display:inline-block;padding:4px 8px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.03)}
+  .file{display:inline-flex;gap:8px;align-items:center}
+  /* responsive */
+  @media (max-width:900px){ .app{grid-template-columns:1fr} .sidebar{height:auto} }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="logo">WMS</div>
+      <div>
+        <h1>Mini WMS</h1>
+        <div class="subtitle">Edit inventory, bins, branches, POs, vendors, generate orders & download reports — local only</div>
+      </div>
+      <div class="right" style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <button class="btn" id="backupBtn" title="Export JSON backup">Export JSON</button>
+        <button class="btn ghost" id="importBtn" title="Import JSON backup">Import JSON</button>
+      </div>
+    </header>
+
+    <aside class="sidebar" role="navigation" aria-label="Main navigation">
+      <button class="nav-btn active" data-view="inventory">Inventory</button>
+      <button class="nav-btn" data-view="locations">Branches & Bins</button>
+      <button class="nav-btn" data-view="vendors">Vendors & POs</button>
+      <button class="nav-btn" data-view="orders">Orders (Generate)</button>
+      <button class="nav-btn" data-view="reports">Reports</button>
+
+      <hr style="border:none;height:1px;background:rgba(255,255,255,0.02);margin:12px 0">
+      <div class="small muted">Quick actions</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+        <button class="btn ghost" id="addItemBtn">+ Add Item</button>
+        <button class="btn ghost" id="addBranchBtn">+ Add Branch</button>
+        <button class="btn ghost" id="addVendorBtn">+ Add Vendor</button>
+        <button class="btn ghost" id="addPOBtn">+ Create PO</button>
+      </div>
+
+      <hr style="border:none;height:1px;background:rgba(255,255,255,0.02);margin:12px 0">
+      <div class="small muted">Storage</div>
+      <div style="margin-top:8px;font-size:13px">
+        <div><strong id="itemCount">0</strong> items</div>
+        <div><strong id="branchCount">0</strong> branches</div>
+        <div><strong id="vendorCount">0</strong> vendors</div>
+        <div><strong id="poCount">0</strong> POs</div>
+      </div>
+    </aside>
+
+    <main class="main" id="mainContent">
+      <!-- Inventory View -->
+      <section id="view-inventory" class="view">
+        <div class="panel-title">
+          <div>
+            <h2 style="margin:0">Inventory</h2>
+            <div class="small muted">Edit quantities, bin location, branch allocation and item properties</div>
+          </div>
+          <div class="controls">
+            <div class="search" style="min-width:320px">
+              <input id="invSearch" placeholder="Search SKU, name, bin, branch..." />
+              <select id="filterBranch"><option value="">All branches</option></select>
+              <button class="btn ghost" id="clearSearch">Clear</button>
+            </div>
+            <button class="btn" id="refreshBtn">Refresh</button>
+            <button class="btn" id="downloadInventoryCsv">Download CSV</button>
+          </div>
+        </div>
+
+        <table class="table" id="inventoryTable" aria-live="polite">
+          <thead>
+            <tr>
+              <th>SKU</th><th>Name</th><th>Qty</th><th>UoM</th><th>Cost</th><th>Branch</th><th>Bin</th><th>Last Tx</th><th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <!-- Locations View -->
+      <section id="view-locations" class="view" style="display:none">
+        <div class="panel-title">
+          <div>
+            <h2 style="margin:0">Branches & Bins</h2>
+            <div class="small muted">Create and edit branches and bin locations</div>
+          </div>
+          <div class="controls">
+            <button class="btn" id="exportLocations">Export CSV</button>
+            <button class="btn ghost" id="importLocations">Import JSON</button>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div style="flex:1;min-width:320px">
+            <h3 style="margin:0 0 8px 0">Branches</h3>
+            <table class="table" id="branchesTable">
+              <thead><tr><th>Branch ID</th><th>Name</th><th>Address</th><th></th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div style="flex:1;min-width:320px">
+            <h3 style="margin:0 0 8px 0">Bins (Locations)</h3>
+            <table class="table" id="binsTable">
+              <thead><tr><th>Bin Code</th><th>Branch</th><th>Type</th><th>Capacity</th><th></th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Vendors & POs -->
+      <section id="view-vendors" class="view" style="display:none">
+        <div class="panel-title">
+          <div>
+            <h2 style="margin:0">Vendors & Purchase Orders</h2>
+            <div class="small muted">Create POs, receive goods, and manage vendors</div>
+          </div>
+          <div class="controls">
+            <button class="btn" id="downloadPOs">Download POs CSV</button>
+            <button class="btn ghost" id="createPOBtn">New PO</button>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div style="flex:1;min-width:420px">
+            <h3 style="margin:0 0 8px 0">Vendors</h3>
+            <table class="table" id="vendorsTable">
+              <thead><tr><th>ID</th><th>Name</th><th>Contact</th><th></th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div style="flex:1;min-width:420px">
+            <h3 style="margin:0 0 8px 0">Purchase Orders</h3>
+            <table class="table" id="poTable">
+              <thead><tr><th>PO#</th><th>Vendor</th><th>Created</th><th>Status</th><th></th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Orders -->
+      <section id="view-orders" class="view" style="display:none">
+        <div class="panel-title">
+          <div>
+            <h2 style="margin:0">Orders</h2>
+            <div class="small muted">Generate sales orders and fulfill them</div>
+          </div>
+          <div class="controls">
+            <button class="btn" id="downloadOrdersCsv">Download Orders CSV</button>
+            <button class="btn ghost" id="newOrderBtn">New Order</button>
+          </div>
+        </div>
+
+        <table class="table" id="ordersTable">
+          <thead><tr><th>SO#</th><th>Customer</th><th>Items</th><th>Qty</th><th>Status</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <!-- Reports -->
+      <section id="view-reports" class="view" style="display:none">
+        <div class="panel-title">
+          <div>
+            <h2 style="margin:0">Reports</h2>
+            <div class="small muted">Filter and download reports</div>
+          </div>
+          <div class="controls">
+            <select id="reportType">
+              <option value="inventory">Inventory Valuation</option>
+              <option value="transactions">Transactions Log</option>
+              <option value="vendorpos">Vendor POs</option>
+            </select>
+            <button class="btn" id="runReport">Run & Download CSV</button>
+          </div>
+        </div>
+
+        <div id="reportResults" style="margin-top:12px"></div>
+      </section>
+    </main>
+
+    <footer>
+      Mini WMS — client-side demo. Data stored in your browser's localStorage. Use Export JSON to back up data.
+    </footer>
+  </div>
+
+  <!-- Modal containers -->
+  <div id="modalRoot"></div>
+
+<script>
+/* -------------------------
+   Local data model & storage
+   ------------------------- */
+const STORAGE_KEY = 'mini_wms_v1';
+
+const DEFAULT_DATA = {
+  items: [
+    { id: 'SKU-1001', name:'Widget A', uom:'EA', qty: 120, cost: 4.5, branch: 'BR-1', bin: 'A-01', lastTx: 'Initial load' },
+    { id: 'SKU-2002', name:'Gasket B', uom:'EA', qty: 45, cost: 1.2, branch: 'BR-1', bin: 'B-03', lastTx: 'Initial load' },
+    { id: 'SKU-3003', name:'Motor C', uom:'EA', qty: 12, cost: 75.0, branch: 'BR-2', bin: 'M-01', lastTx: 'Initial load' },
+  ],
+  branches: [
+    { id:'BR-1', name:'Main Warehouse', address:'100 Logistics Way' },
+    { id:'BR-2', name:'East Branch', address:'200 Distribution Ave' }
+  ],
+  bins: [
+    { code:'A-01', branch:'BR-1', type:'bulk', capacity:500 },
+    { code:'B-03', branch:'BR-1', type:'shelf', capacity:200 },
+    { code:'M-01', branch:'BR-2', type:'floor', capacity:50 }
+  ],
+  vendors: [
+    { id:'V-01', name:'Acme Supplies', contact:'purchasing@acme.co' },
+    { id:'V-02', name:'Parts International', contact:'sales@partsint.net' }
+  ],
+  pos: [
+    { poNumber:'PO-100', vendorId:'V-01', created: new Date().toISOString(), status:'Open', lines: [{ sku:'SKU-1001', qty:50, unitCost:4.5 }] }
+  ],
+  orders: [
+    { soNumber:'SO-200', customer:'Customer A', items:[{sku:'SKU-1001', qty:10}], qty:10, status:'Open', created: new Date().toISOString() }
+  ],
+  transactions: [
+    { id: genId('TX'), type:'initial', ref:'seed', sku:'SKU-1001', qty:120, branch:'BR-1', bin:'A-01', at: new Date().toISOString(), by:'system' }
+  ],
+  nextIds: { po: 101, so:201 }
+};
+
+function genId(prefix='ID'){ return prefix + '-' + Math.random().toString(36).slice(2,9).toUpperCase(); }
+
+function loadData(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if(!raw) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_DATA));
+    return JSON.parse(JSON.stringify(DEFAULT_DATA));
+  }
+  try{ return JSON.parse(raw); } catch(e){ console.error('Storage parse error', e); localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_DATA)); return JSON.parse(JSON.stringify(DEFAULT_DATA)); }
+}
+function saveData(ds){ localStorage.setItem(STORAGE_KEY, JSON.stringify(ds)); updateCounts(); }
+
+let DS = loadData();
+
+/* -------------------------
+   UI Helpers & Rendering
+   ------------------------- */
+
+const views = document.querySelectorAll('.nav-btn');
+views.forEach(btn => btn.addEventListener('click', (e) => {
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const view = btn.dataset.view;
+  document.querySelectorAll('.view').forEach(v=>v.style.display='none');
+  document.getElementById('view-'+view).style.display = 'block';
+}));
+
+function updateCounts(){
+  document.getElementById('itemCount').innerText = DS.items.length;
+  document.getElementById('branchCount').innerText = DS.branches.length;
+  document.getElementById('vendorCount').innerText = DS.vendors.length;
+  document.getElementById('poCount').innerText = DS.pos.length;
+}
+updateCounts();
+
+/* ---------- Inventory Table ---------- */
+
+const invTableBody = document.querySelector('#inventoryTable tbody');
+const invSearch = document.getElementById('invSearch');
+const filterBranch = document.getElementById('filterBranch');
+
+function populateBranchFilter(){
+  filterBranch.innerHTML = '<option value="">All branches</option>';
+  DS.branches.forEach(b=> filterBranch.insertAdjacentHTML('beforeend', `<option value="${b.id}">${b.name}</option>`));
+}
+populateBranchFilter();
+
+function renderInventory(){
+  const q = invSearch.value.trim().toLowerCase();
+  const branchFilter = filterBranch.value;
+  invTableBody.innerHTML = '';
+  const filtered = DS.items.filter(it => {
+    if(branchFilter && it.branch !== branchFilter) return false;
+    if(!q) return true;
+    const fields = [it.id, it.name, it.branch, it.bin, String(it.qty), String(it.cost)].join(' ').toLowerCase();
+    return fields.includes(q);
+  });
+  filtered.forEach(it => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${it.id}</td>
+      <td>${escapeHtml(it.name)}</td>
+      <td>${it.qty}</td>
+      <td>${it.uom || 'EA'}</td>
+      <td>$${Number(it.cost).toFixed(2)}</td>
+      <td>${it.branch || ''}</td>
+      <td>${it.bin || ''}</td>
+      <td class="small muted">${it.lastTx || ''}</td>
+      <td style="text-align:right">
+        <button class="btn ghost" data-action="edit" data-id="${it.id}">Edit</button>
+        <button class="btn ghost" data-action="tx" data-id="${it.id}">Tx</button>
+      </td>
+    `;
+    invTableBody.appendChild(tr);
+  });
+}
+renderInventory();
+
+document.getElementById('inventoryTable').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if(!btn) return;
+  const id = btn.dataset.id;
+  const action = btn.dataset.action;
+  if(action === 'edit') openEditItemModal(id);
+  if(action === 'tx') openTransactionModal(id);
+});
+
+/* ---------- Branches & Bins ---------- */
+
+function renderBranches(){
+  const tbody = document.querySelector('#branchesTable tbody'); tbody.innerHTML = '';
+  DS.branches.forEach(b => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${b.id}</td><td>${escapeHtml(b.name)}</td><td>${escapeHtml(b.address||'')}</td><td style="text-align:right">
+      <button class="btn ghost" data-action="editBranch" data-id="${b.id}">Edit</button>
+      <button class="btn ghost" data-action="delBranch" data-id="${b.id}">Delete</button>
+    </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderBins(){
+  const tbody = document.querySelector('#binsTable tbody'); tbody.innerHTML = '';
+  DS.bins.forEach(b => {
+    const branch = DS.branches.find(x=>x.id===b.branch);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${b.code}</td><td>${branch ? branch.name : b.branch}</td><td>${b.type||''}</td><td>${b.capacity||''}</td><td style="text-align:right">
+      <button class="btn ghost" data-action="editBin" data-id="${b.code}">Edit</button>
+      <button class="btn ghost" data-action="delBin" data-id="${b.code}">Delete</button>
+    </td>`;
+    tbody.appendChild(tr);
+  });
+}
+renderBranches(); renderBins();
+
+/* ---------- Vendors & POs ---------- */
+
+function renderVendors(){
+  const tbody = document.querySelector('#vendorsTable tbody'); tbody.innerHTML = '';
+  DS.vendors.forEach(v=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${v.id}</td><td>${escapeHtml(v.name)}</td><td>${escapeHtml(v.contact||'')}</td><td style="text-align:right">
+      <button class="btn ghost" data-action="editVendor" data-id="${v.id}">Edit</button>
+      <button class="btn ghost" data-action="delVendor" data-id="${v.id}">Delete</button>
+    </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderPOs(){
+  const tbody = document.querySelector('#poTable tbody'); tbody.innerHTML = '';
+  DS.pos.forEach(po=>{
+    const vendor = DS.vendors.find(v=>v.id===po.vendorId);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${po.poNumber}</td><td>${vendor?vendor.name:po.vendorId}</td><td class="small muted">${new Date(po.created).toLocaleString()}</td><td>${po.status}</td>
+      <td style="text-align:right">
+        <button class="btn ghost" data-action="viewPO" data-id="${po.poNumber}">View</button>
+        <button class="btn ghost" data-action="receivePO" data-id="${po.poNumber}">Receive</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+renderVendors(); renderPOs();
+
+/* ---------- Orders ---------- */
+
+function renderOrders(){
+  const tbody = document.querySelector('#ordersTable tbody'); tbody.innerHTML = '';
+  DS.orders.forEach(o=>{
+    const itemsSummary = o.items.map(it=>`${it.sku} x${it.qty}`).join(', ');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${o.soNumber}</td><td>${escapeHtml(o.customer||'')}</td><td>${escapeHtml(itemsSummary)}</td><td>${o.qty}</td><td>${o.status}</td>
+      <td style="text-align:right">
+        <button class="btn ghost" data-action="viewSO" data-id="${o.soNumber}">View</button>
+        <button class="btn ghost" data-action="pickSO" data-id="${o.soNumber}">Pick/Ship</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+renderOrders();
+
+/* ---------- Reports ---------- */
+
+document.getElementById('runReport').addEventListener('click', () => {
+  const type = document.getElementById('reportType').value;
+  if(type === 'inventory') downloadInventoryCSV();
+  if(type === 'transactions') downloadTransactionsCSV();
+  if(type === 'vendorpos') downloadPOsCSV();
+});
+
+/* ---------- Backup & Import ---------- */
+document.getElementById('backupBtn').addEventListener('click', () => {
+  const fileName = 'wms-backup-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-') + '.json';
+  downloadFile(fileName, JSON.stringify(DS, null, 2), 'application/json');
+});
+document.getElementById('importBtn').addEventListener('click', () => {
+  openFileImport((data) => {
+    try{
+      const parsed = JSON.parse(data);
+      if(confirm('Importing will overwrite current app data. Continue?')){
+        DS = parsed;
+        saveData(DS);
+        refreshAll();
+        alert('Import successful');
+      }
+    }catch(e){ alert('Invalid JSON'); }
+  });
+});
+
+/* ---------- Quick add buttons ---------- */
+
+document.getElementById('addItemBtn').addEventListener('click', ()=> openNewItemModal());
+document.getElementById('addBranchBtn').addEventListener('click', ()=> openNewBranchModal());
+document.getElementById('addVendorBtn').addEventListener('click', ()=> openNewVendorModal());
+document.getElementById('addPOBtn').addEventListener('click', ()=> openNewPOModal());
+
+/* ---------- Create PO / Receive ---------- */
+
+document.getElementById('createPOBtn').addEventListener('click', ()=> openNewPOModal());
+
+/* ---------- Orders ---------- */
+document.getElementById('newOrderBtn').addEventListener('click', ()=> openNewOrderModal());
+
+/* ---------- Search & filters ---------- */
+invSearch.addEventListener('input', debounce(()=> renderInventory(), 180));
+filterBranch.addEventListener('change', ()=> renderInventory());
+document.getElementById('clearSearch').addEventListener('click', ()=> { invSearch.value=''; filterBranch.value=''; renderInventory(); });
+
+/* ---------- Download CSV buttons ---------- */
+document.getElementById('downloadInventoryCsv').addEventListener('click', downloadInventoryCSV);
+document.getElementById('downloadPOs').addEventListener('click', downloadPOsCSV);
+document.getElementById('downloadOrdersCsv').addEventListener('click', downloadOrdersCSV);
+
+/* ---------- Inventory CSV generation ---------- */
+function downloadInventoryCSV(){
+  const rows = [['SKU','Name','Qty','UoM','Cost','Branch','Bin','LastTx']];
+  DS.items.forEach(it => rows.push([it.id, it.name, it.qty, it.uom || 'EA', it.cost, it.branch || '', it.bin || '', it.lastTx || '']));
+  const csv = rows.map(r => r.map(csvEscape).join(',')).join('\n');
+  downloadFile('inventory.csv', csv, 'text/csv');
+}
+
+function downloadTransactionsCSV(){
+  const rows = [['ID','Type','Ref','SKU','Qty','Branch','Bin','At','By']];
+  DS.transactions.forEach(t => rows.push([t.id,t.type,t.ref,t.sku,t.qty,t.branch,t.bin,t.at,t.by]));
+  downloadFile('transactions.csv', rows.map(r => r.map(csvEscape).join(',')).join('\n'), 'text/csv');
+}
+
+function downloadPOsCSV(){
+  const rows = [['PO#','Vendor','Created','Status','Lines']];
+  DS.pos.forEach(po => {
+    const vendor = DS.vendors.find(v=>v.id===po.vendorId);
+    const lines = po.lines.map(l=>`${l.sku} x${l.qty}@$${Number(l.unitCost).toFixed(2)}`).join('; ');
+    rows.push([po.poNumber, vendor?vendor.name:po.vendorId, new Date(po.created).toLocaleString(), po.status, lines]);
+  });
+  downloadFile('pos.csv', rows.map(r=>r.map(csvEscape).join(',')).join('\n'), 'text/csv');
+}
+
+function downloadOrdersCSV(){
+  const rows = [['SO#','Customer','Created','Status','Items','Qty']];
+  DS.orders.forEach(o=> rows.push([o.soNumber, o.customer, new Date(o.created).toLocaleString(), o.status, o.items.map(i=>i.sku+ 'x'+i.qty).join('; '), o.qty]));
+  downloadFile('orders.csv', rows.map(r=>r.map(csvEscape).join(',')).join('\n'), 'text/csv');
+}
+
+/* ---------- View actions for POs & Orders ---------- */
+
+document.querySelector('#poTable').addEventListener('click', (e) => {
+  const btn = e.target.closest('button'); if(!btn) return;
+  const id = btn.dataset.id; const action = btn.dataset.action;
+  if(action === 'viewPO') openViewPOModal(id);
+  if(action === 'receivePO') openReceivePOModal(id);
+});
+
+document.querySelector('#ordersTable').addEventListener('click', (e) => {
+  const btn = e.target.closest('button'); if(!btn) return;
+  const id = btn.dataset.id; const action = btn.dataset.action;
+  if(action === 'viewSO') openViewSOModal(id);
+  if(action === 'pickSO') openPickSOModal(id);
+});
+
+/* ---------- Modal utilities ---------- */
+
+const modalRoot = document.getElementById('modalRoot');
+
+function openModal(html, opts={closeOnBg:true}){
+  const backdrop = document.createElement('div'); backdrop.className='modal-backdrop';
+  const modal = document.createElement('div'); modal.className='modal'; modal.innerHTML = html;
+  backdrop.appendChild(modal);
+  modalRoot.appendChild(backdrop);
+  if(opts.onOpen) opts.onOpen(modal, backdrop);
+  if(opts.closeOnBg){
+    backdrop.addEventListener('click', (ev)=>{ if(ev.target===backdrop) closeModal(backdrop); });
+  }
+  return {backdrop, modal};
+}
+function closeModal(node){ node.remove(); }
+
+/* ---------- Edit / Create item modal ---------- */
+
+function openNewItemModal(){
+  const id = 'SKU-' + Math.floor(Math.random()*9000+1000);
+  openItemForm({ id, name:'', uom:'EA', qty:0, cost:0, branch:(DS.branches[0]?DS.branches[0].id:''), bin:'' }, true);
+}
+
+function openEditItemModal(itemId){
+  const it = DS.items.find(i=>i.id===itemId); if(!it) return alert('Item not found');
+  openItemForm(Object.assign({}, it), false);
+}
+
+function openItemForm(item, isNew=false){
+  const branchOptions = DS.branches.map(b=>`<option value="${b.id}" ${item.branch===b.id?'selected':''}>${b.name}</option>`).join('');
+  const binOptions = DS.bins.filter(x=>x.branch===item.branch).map(b=>`<option value="${b.code}" ${item.bin===b.code?'selected':''}>${b.code}</option>`).join('');
+  const html = `
+    <h3>${isNew? 'Add New Item' : 'Edit Item'} <span class="small muted">${item.id}</span></h3>
+    <div style="margin-top:8px">
+      <div class="form-row"><input id="itm_id" value="${item.id}" disabled /><input id="itm_name" value="${escapeAttr(item.name)}" placeholder="Name" /></div>
+      <div class="form-row" style="margin-top:8px"><input id="itm_uom" value="${item.uom||'EA'}" /><input id="itm_qty" type="number" value="${item.qty||0}" /></div>
+      <div class="form-row" style="margin-top:8px"><input id="itm_cost" type="number" step="0.01" value="${item.cost||0}" /><select id="itm_branch"><option value="">--Select Branch--</option>${branchOptions}</select></div>
+      <div style="margin-top:8px"><select id="itm_bin"><option value="">--Select Bin--</option>${binOptions}</select></div>
+      <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn ghost" id="itemCancel">Cancel</button>
+        <button class="btn" id="itemSave">Save</button>
+      </div>
+    </div>
+  `;
+  const {backdrop, modal} = openModal(html);
+  // if branch changes update bins dropdown
+  modal.querySelector('#itm_branch').addEventListener('change', (e)=>{
+    const b = e.target.value;
+    const binSelect = modal.querySelector('#itm_bin');
+    binSelect.innerHTML = '<option value="">--Select Bin--</option>' + DS.bins.filter(x=>x.branch===b).map(bi=>`<option value="${bi.code}">${bi.code}</option>`).join('');
+  });
+
+  modal.querySelector('#itemCancel').addEventListener('click', ()=> closeModal(backdrop));
+  modal.querySelector('#itemSave').addEventListener('click', ()=>{
+    const id = modal.querySelector('#itm_id').value.trim();
+    const name = modal.querySelector('#itm_name').value.trim();
+    const uom = modal.querySelector('#itm_uom').value.trim() || 'EA';
+    const qty = Number(modal.querySelector('#itm_qty').value || 0);
+    const cost = Number(modal.querySelector('#itm_cost').value || 0);
+    const branch = modal.querySelector('#itm_branch').value || '';
+    const bin = modal.querySelector('#itm_bin').value || '';
+    if(!id || !name) return alert('Provide SKU and name');
+    const existing = DS.items.find(x=>x.id===id);
+    if(existing && isNew) return alert('Item with that SKU already exists');
+    if(existing){
+      existing.name = name; existing.uom = uom; existing.qty = qty; existing.cost = cost; existing.branch = branch; existing.bin = bin; existing.lastTx = 'Edited';
+    } else {
+      DS.items.push({ id, name, uom, qty, cost, branch, bin, lastTx:'Created' });
+    }
+    saveData(DS); renderInventory(); closeModal(backdrop);
+  });
+}
+
+/* ---------- Transactions (receive/adjust) ---------- */
+
+function openTransactionModal(itemId){
+  const it = DS.items.find(i=>i.id===itemId);
+  if(!it) return alert('Item not found');
+  const html = `
+    <h3>Transact - ${it.id} <span class="small muted">${escapeHtml(it.name)}</span></h3>
+    <div style="margin-top:8px">
+      <div class="form-row"><select id="tx_type"><option value="receive">Receive</option><option value="pick">Pick/Ship</option><option value="adjust">Adjustment</option><option value="transfer">Transfer</option></select><input id="tx_qty" type="number" value="0" /></div>
+      <div style="margin-top:8px" class="form-row"><select id="tx_branch">${DS.branches.map(b=>`<option value="${b.id}" ${it.branch===b.id?'selected':''}>${b.name}</option>`).join('')}</select><select id="tx_bin"><option value="">--bin--</option>${DS.bins.filter(b=>b.branch===it.branch).map(b=>`<option value="${b.code}" ${it.bin===b.code?'selected':''}>${b.code}</option>`).join('')}</select></div>
+      <div style="margin-top:8px"><input id="tx_by" placeholder="User / scanner id" value="operator" /></div>
+      <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn ghost" id="txCancel">Cancel</button>
+        <button class="btn" id="txApply">Apply</button>
+      </div>
+    </div>
+  `;
+  const {backdrop, modal} = openModal(html);
+  modal.querySelector('#txCancel').addEventListener('click', ()=> closeModal(backdrop));
+  modal.querySelector('#txApply').addEventListener('click', ()=>{
+    const type = modal.querySelector('#tx_type').value;
+    const qty = Number(modal.querySelector('#tx_qty').value || 0);
+    const branch = modal.querySelector('#tx_branch').value;
+    const bin = modal.querySelector('#tx_bin').value;
+    const by = modal.querySelector('#tx_by').value || 'operator';
+    if(type === 'receive') {
+      it.qty += qty;
+      it.branch = branch || it.branch; it.bin = bin || it.bin;
+      DS.transactions.push({ id: genId('TX'), type:'receive', ref:'manual', sku:it.id, qty, branch, bin, at:new Date().toISOString(), by });
+      it.lastTx = `Received ${qty} by ${by}`;
+    } else if(type === 'pick') {
+      if(qty > it.qty) return alert('Not enough qty to pick');
+      it.qty -= qty;
+      DS.transactions.push({ id: genId('TX'), type:'pick', ref:'manual', sku:it.id, qty:-qty, branch, bin, at:new Date().toISOString(), by });
+      it.lastTx = `Picked ${qty} by ${by}`;
+    } else if(type === 'adjust') {
+      it.qty = qty;
+      DS.transactions.push({ id: genId('TX'), type:'adjust', ref:'manual', sku:it.id, qty, branch, bin, at:new Date().toISOString(), by });
+      it.lastTx = `Adjusted to ${qty} by ${by}`;
+    } else if(type === 'transfer'){
+      // transfer within system: qty positive means move, will create a separate transfer tx
+      it.qty -= qty;
+      DS.items.push({ id: it.id + '-TRANSFER', name:it.name + ' (transfer)', uom:it.uom, qty: qty, cost: it.cost, branch: branch, bin: bin, lastTx: `Transferred in by ${by}` });
+      DS.transactions.push({ id: genId('TX'), type:'transfer', ref:'manual', sku:it.id, qty:-qty, branch: it.branch, bin: it.bin, at:new Date().toISOString(), by });
+      DS.transactions.push({ id: genId('TX'), type:'transfer', ref:'manual', sku:it.id, qty:qty, branch, bin, at:new Date().toISOString(), by });
+      it.lastTx = `Transferred ${qty} to ${branch}/${bin}`;
+    }
+    saveData(DS); renderInventory(); renderOrders(); closeModal(backdrop);
+  });
+}
+
+/* ---------- Branch & Bin Modals ---------- */
+
+function openNewBranchModal(){
+  const id = 'BR-' + Math.floor(Math.random()*9000 + 100);
+  openBranchForm({ id, name:'', address:'' }, true);
+}
+
+function openBranchForm(branch, isNew=false){
+  const html = `
+    <h3>${isNew? 'Add Branch' : 'Edit Branch'} <span class="small muted">${branch.id}</span></h3>
+    <div style="margin-top:8px">
+      <div class="form-row"><input id="br_name" value="${escapeAttr(branch.name)}" placeholder="Name"/><input id="br_address" value="${escapeAttr(branch.address)}" placeholder="Address"/></div>
+      <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn ghost" id="brCancel">Cancel</button>
+        <button class="btn" id="brSave">Save</button>
+      </div>
+    </div>
+  `;
+  const {backdrop, modal} = openModal(html);
+  modal.querySelector('#brCancel').addEventListener('click', ()=> closeModal(backdrop));
+  modal.querySelector('#brSave').addEventListener('click', ()=>{
+    const name = modal.querySelector('#br_name').value.trim();
+    const address = modal.querySelector('#br_address').value.trim();
+    if(!name) return alert('Name required');
+    const existing = DS.branches.find(b=>b.id===branch.id);
+    if(existing){ existing.name = name; existing.address = address; } else DS.branches.push({ id:branch.id, name, address });
+    saveData(DS); populateBranchFilter(); renderBranches(); renderBins(); renderInventory(); closeModal(backdrop);
+  });
+}
+
+document.querySelector('#branchesTable').addEventListener('click', (e) => {
+  const btn = e.target.closest('button'); if(!btn) return;
+  const id = btn.dataset.id; const action = btn.dataset.action;
+  if(action === 'editBranch') {
+    const branch = DS.branches.find(b=>b.id===id); if(branch) openBranchForm(branch,false);
+  }
+  if(action === 'delBranch') {
+    if(!confirm('Delete branch? This will NOT remove items automatically.')) return;
+    DS.branches = DS.branches.filter(b=>b.id!==id);
+    DS.bins = DS.bins.filter(x=>x.branch!==id);
+    saveData(DS); renderBranches(); renderBins(); renderInventory(); populateBranchFilter();
+  }
+});
+
+function openNewBinModal(){
+  const code = 'BIN-' + Math.floor(Math.random()*9000+100);
+  openBinForm({ code, branch: (DS.branches[0]?DS.branches[0].id:''), type:'shelf', capacity:100 }, true);
+}
+
+function openBinForm(bin, isNew=false){
+  const html = `
+    <h3>${isNew? 'Add Bin' : 'Edit Bin'} <span class="small muted">${bin.code}</span></h3>
+    <div style="margin-top:8px">
+      <div class="form-row"><input id="bin_code" value="${escapeAttr(bin.code)}" disabled/><select id="bin_branch">${DS.branches.map(b=>`<option value="${b.id}" ${bin.branch===b.id?'selected':''}>${b.name}</option>`)}</select></div>
+      <div style="margin-top:8px" class="form-row"><input id="bin_type" value="${escapeAttr(bin.type)}" /><input id="bin_capacity" type="number" value="${bin.capacity}" /></div>
+      <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn ghost" id="binCancel">Cancel</button>
+        <button class="btn" id="binSave">Save</button>
+      </div>
+    </div>
+  `;
+  const {backdrop, modal} = openModal(html);
+  modal.querySelector('#binCancel').addEventListener('click', ()=> closeModal(backdrop));
+  modal.querySelector('#binSave').addEventListener('click', ()=>{
+    const code = modal.querySelector('#bin_code').value.trim();
+    const branch = modal.querySelector('#bin_branch').value;
+    const type = modal.querySelector('#bin_type').value.trim();
+    const capacity = Number(modal.querySelector('#bin_capacity').value || 0);
+    if(!code || !branch) return alert('Provide code and branch');
+    const existing = DS.bins.find(b=>b.code===code);
+    if(existing){ existing.branch = branch; existing.type = type; existing.capacity = capacity; } else DS.bins.push({ code, branch, type, capacity });
+    saveData(DS); renderBins(); renderInventory(); closeModal(backdrop);
+  });
+}
+
+document.querySelector('#binsTable').addEventListener('click', (e) => {
+  const btn = e.target.closest('button'); if(!btn) return;
+  const id = btn.dataset.id; const action = btn.dataset.action;
+  if(action === 'editBin') {
+    const bin = DS.bins.find(b=>b.code===id); if(bin) openBinForm(bin,false);
+  }
+  if(action === 'delBin') {
+    if(!confirm('Delete bin?')) return;
+    DS.bins = DS.bins.filter(b=>b.code!==id); saveData(DS); renderBins(); renderInventory();
+  }
+});
+
+/* ---------- Vendors ---------- */
+
+function openNewVendorModal(){
+  const id = 'V-' + Math.floor(Math.random()*9000+10);
+  openVendorForm({ id, name:'', contact:'' }, true);
+}
+function openVendorForm(vendor, isNew=false){
+  const html = `
+    <h3>${isNew? 'Add Vendor' : 'Edit Vendor'} <span class="small muted">${vendor.id}</span></h3>
+    <div style="margin-top:8px">
+      <div class="form-row"><input id="vend_name" value="${escapeAttr(vendor.name)}" placeholder="Name" /><input id="vend_contact" value="${escapeAttr(vendor.contact)}" placeholder="Contact email" /></div>
+      <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn ghost" id="vendCancel">Cancel</button>
+        <button class="btn" id="vendSave">Save</button>
+      </div>
+    </div>
+  `;
+  const {backdrop, modal} = openModal(html);
+  modal.querySelector('#vendCancel').addEventListener('click', ()=> closeModal(backdrop));
+  modal.querySelector('#vendSave').addEventListener('click', ()=>{
+    const name = modal.querySelector('#vend_name').value.trim();
+    const contact = modal.querySelector('#vend_contact').value.trim();
+    if(!name) return alert('Name required');
+    const existing = DS.vendors.find(v=>v.id===vendor.id);
+    if(existing){ existing.name = name; existing.contact = contact; } else DS.vendors.push({ id:vendor.id, name, contact });
+    saveData(DS); renderVendors(); renderPOs(); closeModal(backdrop);
+  });
+}
+
+document.querySelector('#vendorsTable').addEventListener('click', (e) => {
+  const btn = e.target.closest('button'); if(!btn) return;
+  const id = btn.dataset.id; const action = btn.dataset.action;
+  if(action === 'editVendor'){ const v = DS.vendors.find(x=>x.id===id); if(v) openVendorForm(v,false); }
+  if(action === 'delVendor'){ if(!confirm('Delete vendor?')) return; DS.vendors = DS.vendors.filter(x=>x.id!==id); saveData(DS); renderVendors(); renderPOs(); }
+});
+
+/* ---------- PO create & receive ---------- */
+
+function openNewPOModal(){
+  const vendorsOptions = DS.vendors.map(v=>`<option value="${v.id}">${v.name}</option>`).join('');
+  const itemsOptions = DS.items.map(i=>`<option value="${i.id}">${i.id} — ${escapeHtml(i.name)}</option>`).join('');
+  const html = `
+    <h3>Create Purchase Order</h3>
+    <div style="margin-top:8px">
+      <div class="form-row"><select id="po_vendor">${vendorsOptions}</select><input id="po_ref" placeholder="PO Ref (optional)"/></div>
+      <div style="margin-top:8px"><select id="po_item">${itemsOptions}</select> <input id="po_qty" type="number" value="0" style="width:90px" /> <input id="po_price" type="number" step="0.01" value="0.00" style="width:110px" /> <button class="btn ghost" id="poAddLine">Add Line</button></div>
+      <div style="margin-top:8px"><div id="poLines" class="small muted">No lines</div></div>
+      <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn ghost" id="poCancel">Cancel</button>
+        <button class="btn" id="poCreate">Create PO</button>
+      </div>
+    </div>
+  `;
+  const {backdrop, modal} = openModal(html);
+  const lines = [];
+  function refreshLines(){
+    const container = modal.querySelector('#poLines');
+    if(lines.length===0) container.innerText = 'No lines';
+    else container.innerHTML = lines.map((l,i)=>`<div>${i+1}. ${l.sku} x${l.qty} @ $${Number(l.unitCost).toFixed(2)} <button data-line="${i}" class="btn ghost delLine">Del</button></div>`).join('');
+    container.querySelectorAll('.delLine').forEach(b=> b.addEventListener('click', (e)=>{ lines.splice(Number(e.target.dataset.line),1); refreshLines(); }));
+  }
+  modal.querySelector('#poAddLine').addEventListener('click', ()=>{
+    const sku = modal.querySelector('#po_item').value;
+    const qty = Number(modal.querySelector('#po_qty').value || 0);
+    const unitCost = Number(modal.querySelector('#po_price').value || 0);
+    if(!sku || qty<=0) return alert('Select SKU & qty');
+    lines.push({ sku, qty, unitCost });
+    refreshLines();
+  });
+  modal.querySelector('#poCancel').addEventListener('click', ()=> closeModal(backdrop));
+  modal.querySelector('#poCreate').addEventListener('click', ()=>{
+    const vendorId = modal.querySelector('#po_vendor').value;
+    const ref = modal.querySelector('#po_ref').value || '';
+    if(!vendorId || lines.length===0) return alert('Select vendor and add lines');
+    const poNum = 'PO-' + (DS.nextIds.po++);
+    const po = { poNumber:poNum, vendorId, created: new Date().toISOString(), status:'Open', ref, lines };
+    DS.pos.push(po); DS.transactions.push({ id: genId('TX'), type:'po-created', ref:poNum, at:new Date().toISOString(), by:'user' });
+    saveData(DS); renderPOs(); renderVendors(); closeModal(backdrop);
+  });
+}
+
+function openViewPOModal(poNumber){
+  const po = DS.pos.find(p=>p.poNumber===poNumber); if(!po) return alert('PO not found');
+  const vendor = DS.vendors.find(v=>v.id===po.vendorId);
+  const linesHtml = po.lines.map(l=>`<li>${l.sku} x${l.qty} @ $${Number(l.unitCost).toFixed(2)}</li>`).join('');
+  const html = `
+    <h3>${po.poNumber} — ${vendor?escapeHtml(vendor.name):po.vendorId}</h3>
+    <div class="small muted">${new Date(po.created).toLocaleString()} — Status: ${po.status}</div>
+    <div style="margin-top:12px"><ul>${linesHtml}</ul></div>
+    <div style="margin-top:12px;display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn ghost" id="closePO">Close</button>
+      <button class="btn" id="receiveAll">Receive All</button>
+    </div>
+  `;
+  const {backdrop, modal} = openModal(html);
+  modal.querySelector('#closePO').addEventListener('click', ()=> closeModal(backdrop));
+  modal.querySelector('#receiveAll').addEventListener('click', ()=>{
+    // Apply simple receive: add qty to inventory (branch default first branch)
+    const defaultBranch = DS.branches[0] ? DS.branches[0].id : '';
+    po.lines.forEach(l => {
+      const it = DS.items.find(x=>x.id===l.sku);
+      if(it) { it.qty += l.qty; it.lastTx = `Received via ${po.poNumber}`; }
+      else DS.items.push({ id:l.sku, name:l.sku + ' (from PO)', uom:'EA', qty:l.qty, cost:l.unitCost, branch: defaultBranch, bin:'', lastTx:`Received via ${po.poNumber}` });
+      DS.transactions.push({ id: genId('TX'), type:'receive', ref:po.poNumber, sku:l.sku, qty:l.qty, branch: defaultBranch, bin:'', at:new Date().toISOString(), by:'system' });
+    });
+    po.status = 'Received';
+    saveData(DS); renderInventory(); renderPOs(); closeModal(backdrop);
+    alert('PO received to inventory (simple receive)');
+  });
+}
+
+/* ---------- Orders create & pick ---------- */
+
+function openNewOrderModal(){
+  const itemsOptions = DS.items.map(i=>`<option value="${i.id}">${i.id} — ${escapeHtml(i.name)} (${i.qty} on hand)</option>`).join('');
+  const html = `
+    <h3>Create Sales Order</h3>
+    <div style="margin-top:8px">
+      <div class="form-row"><input id="so_customer" placeholder="Customer name" /><input id="so_ref" placeholder="Reference"/></div>
+      <div style="margin-top:8px"><select id="so_item">${itemsOptions}</select> <input id="so_qty" type="number" value="1" style="width:90px" /> <button class="btn ghost" id="soAddLine">Add</button></div>
+      <div style="margin-top:8px"><div id="soLines" class="small muted">No lines</div></div>
+      <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn ghost" id="soCancel">Cancel</button>
+        <button class="btn" id="soCreate">Create Order</button>
+      </div>
+    </div>
+  `;
+  const {backdrop, modal} = openModal(html);
+  const lines = [];
+  function refresh(){
+    const c = modal.querySelector('#soLines');
+    c.innerHTML = lines.length? lines.map((l,i)=>`<div>${i+1}. ${l.sku} x${l.qty} <button data-line="${i}" class="btn ghost delLine">Del</button></div>`).join(''):'No lines';
+    c.querySelectorAll('.delLine').forEach(b=> b.addEventListener('click', (e)=> { lines.splice(Number(e.target.dataset.line),1); refresh(); }));
+  }
+  modal.querySelector('#soAddLine').addEventListener('click', ()=>{
+    const sku = modal.querySelector('#so_item').value; const qty = Number(modal.querySelector('#so_qty').value || 0);
+    if(!sku || qty<=0) return alert('Select SKU & qty');
+    lines.push({ sku, qty }); refresh();
+  });
+  modal.querySelector('#soCancel').addEventListener('click', ()=> closeModal(backdrop));
+  modal.querySelector('#soCreate').addEventListener('click', ()=>{
+    const customer = modal.querySelector('#so_customer').value || 'Guest';
+    if(lines.length===0) return alert('Add at least one line');
+    const soNum = 'SO-' + (DS.nextIds.so++);
+    const qty = lines.reduce((s,l)=>s+l.qty,0);
+    DS.orders.push({ soNumber: soNum, customer, items: lines, qty, status:'Open', created: new Date().toISOString() });
+    DS.transactions.push({ id: genId('TX'), type:'so-created', ref:soNum, at:new Date().toISOString(), by:'user' });
+    saveData(DS); renderOrders(); closeModal(backdrop);
+  });
+}
+
+function openViewSOModal(soNumber){
+  const so = DS.orders.find(x=>x.soNumber===soNumber); if(!so) return alert('SO not found');
+  const html = `
+    <h3>${so.soNumber} — ${escapeHtml(so.customer)}</h3>
+    <div class="small muted">${new Date(so.created).toLocaleString()} — Status: ${so.status}</div>
+    <div style="margin-top:12px"><ul>${so.items.map(i=>`<li>${i.sku} x${i.qty}</li>`).join('')}</ul></div>
+    <div style="margin-top:12px;display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn ghost" id="closeSO">Close</button>
+      <button class="btn" id="pickSOBtn">Pick/Ship</button>
+    </div>
+  `;
+  const {backdrop, modal} = openModal(html);
+  modal.querySelector('#closeSO').addEventListener('click', ()=> closeModal(backdrop));
+  modal.querySelector('#pickSOBtn').addEventListener('click', ()=> {
+    // attempt to deduct items from inventory (simple algorithm: deduct from any branch with qty)
+    let shortage = [];
+    so.items.forEach(line => {
+      let toPick = line.qty;
+      // loop items in DS to find matches
+      for(const inv of DS.items.filter(x=>x.id===line.sku).sort((a,b)=> (b.qty - a.qty))){
+        if(toPick <= 0) break;
+        const take = Math.min(inv.qty, toPick);
+        inv.qty -= take;
+        toPick -= take;
+        DS.transactions.push({ id: genId('TX'), type:'pick', ref:so.soNumber, sku:inv.id, qty:-take, branch:inv.branch, bin:inv.bin, at:new Date().toISOString(), by:'user' });
+      }
+      if(toPick > 0) shortage.push({ sku: line.sku, remaining: toPick });
+    });
+    if(shortage.length>0) alert('Shortage detected: ' + shortage.map(s=>s.sku + ' x' + s.remaining).join(', '));
+    so.status = (shortage.length === 0) ? 'Shipped' : 'Backordered';
+    saveData(DS); renderInventory(); renderOrders(); closeModal(backdrop);
+  });
+}
+
+/* ---------- Picking simple modal ---------- */
+
+function openPickSOModal(soNumber){
+  openViewSOModal(soNumber); // reuse
+}
+
+/* ---------- Utility & misc ---------- */
+
+function refreshAll(){
+  populateBranchFilter(); renderInventory(); renderBranches(); renderBins(); renderVendors(); renderPOs(); renderOrders(); updateCounts();
+}
+
+refreshAll();
+
+function downloadFile(filename, content, mime='application/octet-stream'){
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+function csvEscape(val){
+  if(val === null || val === undefined) return '';
+  const s = String(val).replace(/"/g, '""');
+  return `"${s}"`;
+}
+function escapeHtml(s){ if(!s) return ''; return s.replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c]); }
+function escapeAttr(s){ if(!s) return ''; return s.replace(/"/g,'&quot;'); }
+
+/* ---------- File import helper ---------- */
+function openFileImport(onLoad){
+  const input = document.createElement('input'); input.type='file'; input.accept='application/json,text/json';
+  input.addEventListener('change', (e) => {
+    const f = e.target.files[0]; if(!f) return;
+    const reader = new FileReader();
+    reader.onload = ()=> onLoad(reader.result);
+    reader.readAsText(f);
+  });
+  input.click();
+}
+
+/* ---------- Debounce ---------- */
+function debounce(fn, t=200){ let to; return (...a)=>{ clearTimeout(to); to = setTimeout(()=>fn(...a), t); }; }
+
+/* ---------- Small convenience: allow quick import locations JSON ---------- */
+document.getElementById('importLocations').addEventListener('click', ()=> {
+  openFileImport((data) => {
+    try{
+      const obj = JSON.parse(data);
+      if(!obj.bins && !obj.branches) return alert('Invalid locations JSON');
+      if(obj.branches) DS.branches = obj.branches;
+      if(obj.bins) DS.bins = obj.bins;
+      saveData(DS); refreshAll(); alert('Imported locations');
+    }catch(e){ alert('Invalid JSON'); }
+  });
+});
+
+/* ---------- keyboard / scanner friendliness ---------- */
+/* RF scanners usually type into focused input. Keep search focused on start. */
+window.addEventListener('load', ()=> {
+  const s = document.getElementById('invSearch'); if(s) s.focus();
+});
+
+/* ---------- small helper to allow adding bins via sidebar quickly ---------- */
+document.getElementById('addBranchBtn').addEventListener('dblclick', openNewBinModal); // double click alternative
+document.getElementById('refreshBtn').addEventListener('click', refreshAll);
+
+/* ---------- Simple CSV export of locations ---------- */
+document.getElementById('exportLocations').addEventListener('click', ()=>{
+  const rows = [['BranchID','BranchName','BranchAddress']];
+  DS.branches.forEach(b=> rows.push([b.id,b.name,b.address]));
+  const bins = [['BinCode','Branch','Type','Capacity']];
+  DS.bins.forEach(b=> bins.push([b.code,b.branch,b.type,b.capacity]));
+  downloadFile('branches.csv', rows.map(r=>r.map(csvEscape).join(',')).join('\n'), 'text/csv');
+  downloadFile('bins.csv', bins.map(r=>r.map(csvEscape).join(',')).join('\n'), 'text/csv');
+});
+
+/* ---------- small utility to create demo updates ---------- */
+document.getElementById('refreshBtn').addEventListener('click', ()=> {
+  // quick sample action: add transaction that rotates a product
+  DS.transactions.push({ id: genId('TX'), type:'heartbeat', ref:'refresh', at: new Date().toISOString(), by:'system' });
+  saveData(DS); renderInventory();
+});
+
+/* ---------- Accessibility: basic keyboard shortcuts ---------- */
+window.addEventListener('keydown', (e) => {
+  if(e.ctrlKey && e.key === 'b') { e.preventDefault(); document.querySelector('[data-view="locations"]').click(); }
+  if(e.ctrlKey && e.key === 'i') { e.preventDefault(); document.querySelector('[data-view="inventory"]').click(); }
+  if(e.key === 'F9') { e.preventDefault(); document.getElementById('newOrderBtn').click(); }
+});
+
+</script>
+</body>
+</html>
+
